@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: debezium/postgres:13-alpine
+    container_name: postgres
+    hostname: postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: 12345
+    ports:
+      - "5432:5432"
+    volumes:
+      - local_pgdata:/var/lib/postgresql/data
+
+  mongodb:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_DATABASE: blu
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  zookeeper:
+    image: debezium/zookeeper
+    container_name: zookeeper
+    hostname: zookeeper
+    environment:
+      ZOOKEEPER_SERVER_ID: 1
+    ports:
+      - "2182:2181"
+      - "2888:2888"
+      - "3888:3888"
+
+  kafka:
+    image: debezium/kafka
+    container_name: kafka
+    hostname: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      ZOOKEEPER_CONNECT: zookeeper:2181
+      BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092"
+
+  connect:
+    image: debezium/connect
+    container_name: connect
+    hostname: connect
+    depends_on:
+      - kafka
+      - postgres
+    ports:
+      - "8083:8083"
+    environment:
+      GROUP_ID: blu_group
+      CONFIG_STORAGE_TOPIC: transaction_storage_topic
+      OFFSET_STORAGE_TOPIC: transaction_offset_topic
+      BOOTSTRAP_SERVERS: kafka:9092
+  project-run:
+    image: python:3.9
+    depends_on:
+      - kafka
+      - postgres
+      - mongodb
+      - connect
+      - zookeeper
+    volumes:
+      - ./config_and_test:/app/config_and_test
+    command: bash -c "bash /app/config_and_test/run_sample.sh"
+volumes:
+  mongodb_data:
+  local_pgdata:
+
